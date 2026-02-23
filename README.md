@@ -11,6 +11,6 @@
 - Session cleared after email update
 
 ## How to Run
-```bash
-docker compose up -d --build
+- docker compose build
+- docker compose up -d
 ```
