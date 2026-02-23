@@ -45,7 +45,7 @@ export class LocalAuthService {
     @MailConfig() private readonly mailConfig: IMailConfig,
     @BaseConfig() private readonly baseConfig: IBaseConfig,
     private readonly jwtService: JwtService
-  ) {}
+  ) { }
 
   private async encodePassword(password: string) {
     const salt = await bcrypt.genSalt(10);
@@ -277,70 +277,108 @@ export class LocalAuthService {
     await this.sessionStoreService.clearByUserId(userId);
   }
 
-  async changeEmail(email: string, token: string, code: string) {
+  async changeEmail(newEmail: string, password: string) {
     const currentEmail = this.cls.get('user.email');
-    const {
-      code: _code,
-      email: _currentEmail,
-      newEmail,
-    } = await this.jwtService
-      .verifyAsync<{ email: string; code: string; newEmail: string }>(token)
-      .catch(() => {
-        throw new CustomHttpException(
-          'Verification code is invalid',
-          HttpErrorCode.INVALID_CAPTCHA
-        );
-      });
-    if (newEmail !== email || _currentEmail !== currentEmail || _code !== code) {
-      throw new CustomHttpException('Verification code is invalid', HttpErrorCode.INVALID_CAPTCHA);
-    }
-    const user = this.cls.get('user');
-    await this.prismaService.txClient().user.update({
-      where: { id: user.id, deletedTime: null, deactivatedTime: null },
-      data: { email: newEmail },
-    });
-    // clear session
-    await this.sessionStoreService.clearByUserId(user.id);
-  }
-
-  async sendChangeEmailCode(newEmail: string, password: string) {
-    const email = this.cls.get('user.email');
-    if (newEmail === email) {
+    if (newEmail === currentEmail) {
       throw new CustomHttpException(
         'New email is the same as the current email',
         HttpErrorCode.CONFLICT
       );
     }
+
     const invalidPasswordError = new CustomHttpException(
       'Password is incorrect',
       HttpErrorCode.INVALID_CREDENTIALS
     );
-    const user = await this.validateUserByEmail(email, password).catch(() => {
+
+    const user = await this.validateUserByEmail(currentEmail, password).catch(() => {
       throw invalidPasswordError;
     });
+
     if (!user) {
       throw invalidPasswordError;
     }
+
     const userByNewEmail = await this.userService.getUserByEmail(newEmail);
     if (userByNewEmail) {
       throw new ConflictException('New email is already registered');
     }
-    const code = getRandomString(6);
-    const token = await this.jwtService.signAsync(
-      { email, newEmail, code },
-      { expiresIn: this.baseConfig.emailCodeExpiresIn }
-    );
-    if (this.baseConfig.enableEmailCodeConsole) {
-      console.info('Change Email Verification code: ', '\x1b[34m' + code + '\x1b[0m');
-    }
-    const emailOptions = await this.mailSenderService.sendEmailVerifyCodeEmailOptions({
-      title: 'Change Email verification',
-      message: `Your verification code is ${code}, expires in ${this.baseConfig.emailCodeExpiresIn}.`,
+
+    await this.prismaService.txClient().user.update({
+      where: { id: user.id, deletedTime: null, deactivatedTime: null },
+      data: { email: newEmail },
     });
-    await this.mailSenderService.sendMail({
-      to: newEmail,
-      ...emailOptions,
-    });
-    return { token };
+
+    // clear session
+    await this.sessionStoreService.clearByUserId(user.id);
   }
+
+  // /* Original email change logic requiring verification code */
+  // async changeEmail(email: string, token: string, code: string) {
+  //   const currentEmail = this.cls.get('user.email');
+  //   const {
+  //     code: _code,
+  //     email: _currentEmail,
+  //     newEmail,
+  //   } = await this.jwtService
+  //     .verifyAsync<{ email: string; code: string; newEmail: string }>(token)
+  //     .catch(() => {
+  //       throw new CustomHttpException(
+  //         'Verification code is invalid',
+  //         HttpErrorCode.INVALID_CAPTCHA
+  //       );
+  //     });
+  //   if (newEmail !== email || _currentEmail !== currentEmail || _code !== code) {
+  //     throw new CustomHttpException('Verification code is invalid', HttpErrorCode.INVALID_CAPTCHA);
+  //   }
+  //   const user = this.cls.get('user');
+  //   await this.prismaService.txClient().user.update({
+  //     where: { id: user.id, deletedTime: null, deactivatedTime: null },
+  //     data: { email: newEmail },
+  //   });
+  //   // clear session
+  //   await this.sessionStoreService.clearByUserId(user.id);
+  // }
+  //
+  // async sendChangeEmailCode(newEmail: string, password: string) {
+  //   const email = this.cls.get('user.email');
+  //   if (newEmail === email) {
+  //     throw new CustomHttpException(
+  //       'New email is the same as the current email',
+  //       HttpErrorCode.CONFLICT
+  //     );
+  //   }
+  //   const invalidPasswordError = new CustomHttpException(
+  //     'Password is incorrect',
+  //     HttpErrorCode.INVALID_CREDENTIALS
+  //   );
+  //   const user = await this.validateUserByEmail(email, password).catch(() => {
+  //     throw invalidPasswordError;
+  //   });
+  //   if (!user) {
+  //     throw invalidPasswordError;
+  //   }
+  //   const userByNewEmail = await this.userService.getUserByEmail(newEmail);
+  //   if (userByNewEmail) {
+  //     throw new ConflictException('New email is already registered');
+  //   }
+  //   const code = getRandomString(6);
+  //   const token = await this.jwtService.signAsync(
+  //     { email, newEmail, code },
+  //     { expiresIn: this.baseConfig.emailCodeExpiresIn }
+  //   );
+  //   if (this.baseConfig.enableEmailCodeConsole) {
+  //     console.info('Change Email Verification code: ', '\x1b[34m' + code + '\x1b[0m');
+  //   }
+  //   const emailOptions = await this.mailSenderService.sendEmailVerifyCodeEmailOptions({
+  //     title: 'Change Email verification',
+  //     message: `Your verification code is ${code}, expires in ${this.baseConfig.emailCodeExpiresIn}.`,
+  //   });
+  //   await this.mailSenderService.sendMail({
+  //     to: newEmail,
+  //     ...emailOptions,
+  //   });
+  //   return { token };
+  // }
+
 }

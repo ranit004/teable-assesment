@@ -1,0 +1,79 @@
+version: '3.9'
+
+services:
+  teable:
+    # Build from the monorepo root (required — Dockerfile copies the whole workspace)
+    build:
+      context: .
+      dockerfile: dockers/teable/Dockerfile
+      args:
+        BUILD_VERSION: "1.8.0"
+    image: teable:1.8.0
+    container_name: teable-app
+    restart: always
+    ports:
+      - '3000:3000'
+    volumes:
+      - teable-data:/app/.assets:rw
+    env_file:
+      - .env
+    environment:
+      - TZ=${TIMEZONE}
+      - NEXT_ENV_IMAGES_ALL_REMOTE=true
+    networks:
+      - teable-net
+    depends_on:
+      teable-db:
+        condition: service_healthy
+      teable-cache:
+        condition: service_healthy
+
+  teable-db:
+    image: postgres:15.4
+    container_name: teable-db
+    hostname: teable-db
+    restart: always
+    ports:
+      - '5432:5432'
+    volumes:
+      - teable-db-data:/var/lib/postgresql/data:rw
+    environment:
+      - TZ=${TIMEZONE}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    networks:
+      - teable-net
+    healthcheck:
+      test: ['CMD-SHELL', "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  teable-cache:
+    image: redis:7.2.4
+    container_name: teable-cache
+    hostname: teable-cache
+    restart: always
+    ports:
+      - '6379:6379'
+    volumes:
+      - teable-cache-data:/data:rw
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    networks:
+      - teable-net
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', '--raw', 'incr', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+networks:
+  teable-net:
+    name: teable-network
+    driver: bridge
+
+volumes:
+  teable-data: {}
+  teable-db-data: {}
+  teable-cache-data: {}

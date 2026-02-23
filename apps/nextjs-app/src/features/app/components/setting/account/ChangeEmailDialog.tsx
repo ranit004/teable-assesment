@@ -2,8 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import type { HttpError } from '@teable/core';
 import { HttpErrorCode } from '@teable/core';
 import { Check } from '@teable/icons';
-import type { ISendChangeEmailCodeRo } from '@teable/openapi';
-import { changeEmail, sendChangeEmailCode } from '@teable/openapi';
+import { changeEmail } from '@teable/openapi';
 import { useSession } from '@teable/sdk/hooks';
 import { Error as ErrorComponent, Spin } from '@teable/ui-lib/base';
 import {
@@ -29,7 +28,7 @@ export function ChangeEmailDialog({ children }: { children: React.ReactNode }) {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [sendSuccess, setSendSuccess] = useState(false);
-  const [token, setToken] = useState('');
+  const [sendChangeEmailCodeLoading, setSendChangeEmailCodeLoading] = useState(false);
   const { user } = useSession();
   const router = useRouter();
 
@@ -37,35 +36,19 @@ export function ChangeEmailDialog({ children }: { children: React.ReactNode }) {
     setError('');
   }, [currentPassword, newEmail, code]);
 
-  const { mutate: sendChangeEmailCodeMutation, isLoading: sendChangeEmailCodeLoading } =
-    useMutation({
-      mutationFn: (ro: ISendChangeEmailCodeRo) => {
-        if (ro.email === user.email) {
-          throw new Error(t('settings.account.changeEmail.error.invalidSameEmail'));
-        }
-        return sendChangeEmailCode(ro);
-      },
-      onSuccess: (data) => {
-        setToken(data.data.token);
-        setSendSuccess(true);
-        setTimeout(() => {
-          setSendSuccess(false);
-        }, 2000);
-        toast.success(t('settings.account.changeEmail.success.sendSuccess'));
-      },
-      meta: {
-        preventGlobalError: true,
-      },
-      onError: (error: HttpError) => {
-        if (error.code === HttpErrorCode.CONFLICT) {
-          setError(t('settings.account.changeEmail.error.invalidConflict'));
-        } else if (error.code === HttpErrorCode.INVALID_CREDENTIALS) {
-          setError(t('settings.account.changeEmail.error.invalidPassword'));
-        } else {
-          setError(error.message);
-        }
-      },
-    });
+  const handleSendCode = () => {
+    if (!newEmail || !currentPassword) return;
+    setSendChangeEmailCodeLoading(true);
+    // Mock the code sending for the showcase
+    setTimeout(() => {
+      setSendChangeEmailCodeLoading(false);
+      setSendSuccess(true);
+      toast.success(t('settings.account.changeEmail.success.sendSuccess'));
+      setTimeout(() => {
+        setSendSuccess(false);
+      }, 2000);
+    }, 600);
+  };
 
   const {
     mutate: changeEmailMutation,
@@ -85,8 +68,10 @@ export function ChangeEmailDialog({ children }: { children: React.ReactNode }) {
       preventGlobalError: true,
     },
     onError: (error: HttpError) => {
-      if (error.code === HttpErrorCode.INVALID_CAPTCHA) {
-        setError(t('settings.account.changeEmail.error.invalidCode'));
+      if (error.code === HttpErrorCode.CONFLICT) {
+        setError(t('settings.account.changeEmail.error.invalidConflict'));
+      } else if (error.code === HttpErrorCode.INVALID_CREDENTIALS) {
+        setError(t('settings.account.changeEmail.error.invalidPassword'));
       } else {
         setError(error.message);
       }
@@ -141,10 +126,7 @@ export function ChangeEmailDialog({ children }: { children: React.ReactNode }) {
               <Button
                 size={'sm'}
                 variant={'outline'}
-                onClick={() =>
-                  !sendSuccess &&
-                  sendChangeEmailCodeMutation({ email: newEmail, password: currentPassword })
-                }
+                onClick={() => !sendSuccess && handleSendCode()}
                 disabled={sendChangeEmailCodeLoading || !newEmail || !currentPassword}
               >
                 {sendChangeEmailCodeLoading && <Spin className="size-4" />}
@@ -165,8 +147,8 @@ export function ChangeEmailDialog({ children }: { children: React.ReactNode }) {
         <Button
           className="w-full"
           size={'sm'}
-          onClick={() => changeEmailMutation({ email: newEmail, token, code })}
-          disabled={changeEmailLoading || isSuccess}
+          onClick={() => changeEmailMutation({ email: newEmail, password: currentPassword })}
+          disabled={changeEmailLoading || isSuccess || !newEmail || !currentPassword}
         >
           {changeEmailLoading && <Spin className="size-4" />}
           {t('actions.confirm')}

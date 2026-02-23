@@ -4,11 +4,9 @@ import { JwtService } from '@nestjs/jwt';
 import { HttpErrorCode } from '@teable/core';
 import { PrismaService } from '@teable/db-main-prisma';
 import type { IGetTempTokenVo, IUserMeVo } from '@teable/openapi';
-import {
-  CHANGE_EMAIL,
+CHANGE_EMAIL,
   createAxios,
   GET_TEMP_TOKEN,
-  SEND_CHANGE_EMAIL_CODE,
   sendSignupVerificationCode,
   SIGN_IN,
   signup,
@@ -211,9 +209,9 @@ describe('Auth Controller (e2e)', () => {
       await prismaService.user.deleteMany({ where: { email: changedEmail } });
     });
 
-    it('api/auth/send-change-email-code - new email is already registered', async () => {
+    it('api/auth/change-email - new email is already registered', async () => {
       const error = await getError(() =>
-        changeEmailAxios.post(SEND_CHANGE_EMAIL_CODE, {
+        changeEmailAxios.patch(CHANGE_EMAIL, {
           email: globalThis.testConfig.email,
           password: '12345678a',
         })
@@ -221,9 +219,9 @@ describe('Auth Controller (e2e)', () => {
       expect(error?.status).toBe(409);
     });
 
-    it('api/auth/send-change-email-code - password is incorrect', async () => {
+    it('api/auth/change-email - password is incorrect', async () => {
       const error = await getError(() =>
-        changeEmailAxios.post(SEND_CHANGE_EMAIL_CODE, {
+        changeEmailAxios.patch(CHANGE_EMAIL, {
           email: changedEmail,
           password: '12345678',
         })
@@ -231,9 +229,9 @@ describe('Auth Controller (e2e)', () => {
       expect(error?.code).toBe(HttpErrorCode.INVALID_CREDENTIALS);
     });
 
-    it('api/auth/send-change-email-code - same email', async () => {
+    it('api/auth/change-email - same email', async () => {
       const error = await getError(() =>
-        changeEmailAxios.post(SEND_CHANGE_EMAIL_CODE, {
+        changeEmailAxios.patch(CHANGE_EMAIL, {
           email: changeEmail,
           password: '12345678a',
         })
@@ -241,62 +239,22 @@ describe('Auth Controller (e2e)', () => {
       expect(error?.code).toBe(HttpErrorCode.CONFLICT);
     });
 
-    it('api/auth/change-email', async () => {
-      const codeRes = await changeEmailAxios.post(SEND_CHANGE_EMAIL_CODE, {
+    it('api/auth/change-email - success', async () => {
+      const changeRes = await changeEmailAxios.patch(CHANGE_EMAIL, {
         email: changedEmail,
         password: '12345678a',
-      });
-      expect(codeRes.data.token).not.toBeUndefined();
-      const jwtService = app.get(JwtService);
-      const decoded = await jwtService.verifyAsync<{ email: string; code: string }>(
-        codeRes.data.token
-      );
-      const newChangeEmailAxios = await createNewUserAxios({
-        email: changeEmail,
-        password: '12345678a',
-      });
-      const changeRes = await newChangeEmailAxios.patch(CHANGE_EMAIL, {
-        email: changedEmail,
-        token: codeRes.data.token,
-        code: decoded.code,
       });
       expect(JSON.stringify(changeRes.headers['set-cookie'])).toContain(
         `"${AUTH_SESSION_COOKIE_NAME}=;`
       );
       const newAxios = axios.create({
-        baseURL: codeRes.config.baseURL,
+        baseURL: changeRes.config.baseURL,
       });
       const res = await newAxios.post(SIGN_IN, {
         email: changedEmail,
         password: '12345678a',
       });
       expect(res.data.email).toBe(changedEmail);
-    });
-
-    it('api/auth/change-email - token is invalid', async () => {
-      const error = await getError(() =>
-        changeEmailAxios.patch(CHANGE_EMAIL, {
-          email: changedEmail,
-          token: 'invalid',
-          code: 'invalid',
-        })
-      );
-      expect(error?.code).toBe(HttpErrorCode.INVALID_CAPTCHA);
-    });
-
-    it('api/auth/change-email - code is invalid', async () => {
-      const codeRes = await changeEmailAxios.post(SEND_CHANGE_EMAIL_CODE, {
-        email: changedEmail,
-        password: '12345678a',
-      });
-      const error = await getError(() =>
-        changeEmailAxios.patch(CHANGE_EMAIL, {
-          email: changedEmail,
-          token: codeRes.data.token,
-          code: 'invalid',
-        })
-      );
-      expect(error?.code).toBe(HttpErrorCode.INVALID_CAPTCHA);
     });
   });
 
